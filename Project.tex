@@ -1,0 +1,210 @@
+\documentclass[12pt]{article}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\usepackage{graphicx} 
+\usepackage{fancyhdr}
+\usepackage[misc]{ifsym}
+\usepackage{enumitem}
+\usepackage{tikz,tcolorbox}
+\usepackage{amsmath}
+\usepackage{multirow}
+\usetikzlibrary{calc}
+\usepackage{amsfonts}
+\usepackage[flushleft]{threeparttable} % Required for tablenotes
+\usepackage{pgfplots}
+\pgfplotsset{width=10cm}
+\usepackage[margin=0.8in]{geometry}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{wasysym}
+\usepackage{listings}
+\usepackage{amssymb}
+\usepackage{exercise}
+\usepackage{appendix}
+\usepackage{booktabs} % For better table formatting
+\usepackage{geometry} % To adjust page margins
+\geometry{margin=1in}
+\usepackage{titlesec}
+\newcommand{\appendixsection}[1]{
+  \section*{#1} % A section without numbering
+  \addcontentsline{toc}{section}{#1} % Add it to the table of contents
+}
+\titleformat{\appendixsection}
+  {\normalfont\HUGE\bfseries}{\thesection.}{1em}{}
+
+
+
+\newcommand{\piercedheart}{%
+  \relbar
+  \mathrel{\mspace{-3.5mu}}
+  \mathrel{\loweredheartsuit}
+  \mathrel{\mspace{-7mu}}
+  \rightarrow
+}
+
+\makeatletter
+\newcommand{\loweredheartsuit}{\mathpalette\loweredheartsuit@\relax}
+\newcommand{\loweredheartsuit@}[2]{%
+  \vcenter{%
+    \sbox\z@{$\m@th#1\mspace{3mu}$}%
+    \vskip\wd\z@
+    \hbox{$\m@th#1\heartsuit$}%
+  }%
+}
+\makeatother
+
+
+\lstset{
+	basicstyle=\selectfont\ttfamily
+}
+
+\usepackage{hyperref}
+ \hypersetup{
+     colorlinks=true,    
+     urlcolor=blue,
+     citecolor=red, 
+     linkcolor=blue,
+ }
+
+\usepackage{epigraph}
+\setlength \epigraphwidth {12cm}
+\setlength \epigraphrule {0pt}
+\AtBeginDocument{\renewcommand {\epigraphflush}{center}}
+
+
+
+\setlength{\headheight}{15pt}
+
+\pgfplotsset{compat=1.18}
+
+
+\newtheorem*{claim}{Claim}
+\newtheorem*{definition}{Definition}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{document}
+
+\pagestyle{fancy}
+\fancyhead{} % clear all header fields
+\fancyhead[L]{\textbf{IE 513 Linear Programming}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\input{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection*{Problem Definition}
+
+{\textbf{Sets:}} \\
+$V$: Set of vertices (nodes) in the graph. \\
+$E$: Set of edges in the graph. \\
+$\delta(v)$: Set of edges incident to vertex $v \in V$. \\
+$\mathcal{T}$: The set of all valid, unconstrained spanning trees in the graph $G=(V, E)$. \\\\
+{\textbf{Parameters:}} \\
+$w_e$: Cost or weight of edge $e \in E$. \\
+$d_v$: Maximum allowed degree for vertex $v \in V$. \\\\
+{\textbf{Variables (Original IP):}} \\
+$x_e \in \{0, 1\}$: 1 if edge $e$ is included in the spanning tree, 0 otherwise.
+
+\subsection*{Original IP Formulation}
+The standard integer program for the Degree-Constrained Minimum Spanning Tree (DCMST):
+\begin{align}
+\min \quad & \sum_{e \in E} w_e x_e \\
+\text{s.t.} \quad & \sum_{e \in \delta(v)} x_e \leq d_v & \forall v \in V \\
+& \sum_{e \in E} x_e = |V| - 1 \\
+& \sum_{e \in E(S)} x_e \leq |S| - 1 & \forall S \subset V, |S| \geq 2 \\
+& x_e \in \{0,1\} & \forall e \in E
+\end{align}
+\textit{Note: The last two constraints define the spanning tree polytope. In the decomposition, we replace these with the set of all valid trees $\mathcal{T}$.}
+
+\subsection*{Master Problem (MP)}
+
+Let $t \in \mathcal{T}$ represent a specific spanning tree. We define the following parameters for each tree $t$:
+\begin{itemize}
+    \item $a_{ev}^t \in \{0,1\}$: 1 if edge $e \in \delta(v)$ is present in tree $t$.
+    \item $D_v^t = \sum_{e \in \delta(v)} a_{ev}^t$: The degree of vertex $v$ in tree $t$.
+    \item $W_t = \sum_{e \in E} w_e x_e^t$: The total weight of tree $t$.
+\end{itemize}
+
+\noindent{\textbf{Master Problem Variables:}} \\
+$\lambda_t \in \{0, 1\}$: 1 if spanning tree $t$ is selected, 0 otherwise. (\textit{Relaxed to $\lambda_t \geq 0$ in the Restricted Master Problem for column generation}).
+
+\begin{align}
+\min \quad & \sum_{t \in \mathcal{T}} W_t \lambda_t \\
+\text{s.t.} \quad & \sum_{t \in \mathcal{T}} D_v^t \lambda_t \leq d_v & \forall v \in V \quad & (\text{Dual: } \pi_v \leq 0) \\
+& \sum_{t \in \mathcal{T}} \lambda_t = 1 & & (\text{Dual: } \mu) \\
+& \lambda_t \geq 0 & \forall t \in \mathcal{T}
+\end{align}
+
+\noindent The Dual of the Master Problem(DMP) is formulated as:
+\begin{align}
+\max \quad & \sum_{v \in V} d_v \pi_v + \mu \\
+\text{s.t.} \quad & \sum_{v \in V} D_v^t \pi_v + \mu \leq W_t & \forall t \in \mathcal{T} \label{eq:dual_constraint} \\
+& \pi_v \leq 0 & \forall v \in V \\
+& \mu \in \mathbb{R}
+\end{align}
+
+\noindent \textbf{Connection to the Subproblem:} 
+The constraints in the Dual Master Problem \eqref{eq:dual_constraint} require that for every valid spanning tree $t \in \mathcal{T}$, the condition $W_t - \sum_{v \in V} D_v^t \pi_v - \mu \geq 0$ must hold. This expression is exactly the {reduced cost} ($\bar{c}$) of a tree in the primal space. The column generation Subproblem searches for a tree $t$ that violates this dual constraint (i.e., finding a tree with a negative reduced cost) to add to the Master Problem.
+
+\subsection*{Subproblem (SP)}
+
+The Subproblem generates a new spanning tree $t$ to enter the Master Problem by minimizing the reduced cost. Let $\pi_v$ be the dual variable associated with the degree constraint of vertex $v$ in the Master Problem, and $\mu$ be the dual variable for the convexity constraint. The reduced cost $\bar{c}$ of a new tree represented by edge variables $x_e$ is:
+\begin{equation}
+\bar{c} = \sum_{e \in E} w_e x_e - \sum_{v \in V} \pi_v \left( \sum_{e \in \delta(v)} x_e \right) - \mu
+\end{equation}
+
+\noindent Every edge $e = (u,v)$ contributes exactly once to the degree of $u$ and once to the degree of $v$. Therefore, we can rewrite the objective function of the subproblem by defining {modified edge weights}:
+\begin{equation}
+\bar{w}_{uv} = w_{uv} - \pi_u - \pi_v
+\end{equation}
+
+\noindent \textbf{Subproblem Formulation:}
+\begin{align}
+\min \quad & \sum_{e=(u,v) \in E} \bar{w}_{uv} x_{uv} \\
+\text{s.t.} \quad & \sum_{e \in E} x_e = |V| - 1 \\
+& \sum_{e \in E(S)} x_e \leq |S| - 1 & \forall S \subset V, |S| \geq 2 \\
+& x_e \in \{0,1\} & \forall e \in E
+\end{align}
+
+\noindent The subproblem is simply an {Unconstrained Minimum Spanning Tree} problem. Because the tree constraints are naturally integral, the subproblem does not require an IP solver. It can be solved optimally and efficiently in $O(|E| \log |V|)$ time using {Kruskal's Algorithm} over the graph with the updated edge weights $\bar{w}_{uv}$. If the weight of the resulting MST minus $\mu$ is strictly less than 0 (i.e., negative reduced cost), the new tree is added as a column to the Restricted Master Problem.
+
+\section*{Branch-and-Price}
+
+While the Dantzig-Wolfe decomposition provides a tight lower bound at the root node, the solution obtained from the Restricted Master Problem (RMP) is typically fractional. To obtain an optimal integer solution for the Degree-Constrained Minimum Spanning Tree (DCMST), the column generation procedure must be embedded within a Branch-and-Bound framework, resulting in a Branch-and-Price algorithm.
+
+\subsection*{1. Node Evaluation and Integrality Check}
+At any given node in the search tree, we solve the linear relaxation of the RMP using column generation. Once no more columns with negative reduced cost can be found, the node is considered solved. Let $\lambda_t^*$ be the optimal weights of the generated trees $t \in \mathcal{T}$ at the current node. 
+
+To determine if the solution is integral, we must map the master problem variables ($\lambda_t$) back to the original edge variables ($x_e$). The aggregated value of edge $e$ is calculated as the sum of the weights of all selected trees that contain $e$:
+\begin{equation}
+\bar{x}_e = \sum_{t \in \mathcal{T} : e \in t} \lambda_t^* \quad \forall e \in E
+\end{equation}
+
+If $\bar{x}_e \in \{0,1\}$ for all $e \in E$, the current fractional combination of trees successfully represents a single, valid, degree-constrained spanning tree. If this solution provides a better objective value than the current upper bound, we update the incumbent solution. If there exists at least one edge where $0 < \bar{x}_e < 1$, the solution is fractional, and we must branch.
+
+\subsection*{2. Branching Rule}
+In network design problems, branching directly on the master problem variables ($\lambda_t$) is highly inefficient because it is difficult to enforce $\lambda_t = 0$ in the subproblem. Instead, we branch on the original edge variables $x_e$. We select an edge $e^* = (u,v)$ with a fractional value (often the one closest to 0.5) and create two child nodes:
+\begin{itemize}
+    \item \textbf{Left Child ($x_{e^*} = 0$):} Edge $e^*$ is forbidden from the spanning tree.
+    \item \textbf{Right Child ($x_{e^*} = 1$):} Edge $e^*$ is forced to be included in the spanning tree.
+\end{itemize}
+
+\subsection*{3. Column Filtering (RMP Update)}
+When transitioning to a child node, the existing columns in the RMP must be filtered to respect the new branching decision. This ensures that the RMP does not select trees that violate the fixed arcs.
+\begin{itemize}
+    \item \textbf{If $x_{e^*} = 0$:} We remove all columns (trees) $t$ from the RMP where $e^* \in t$.
+    \item \textbf{If $x_{e^*} = 1$:} We remove all columns (trees) $t$ from the RMP where $e^* \notin t$. 
+\end{itemize}
+The remaining valid columns are inherited by the child node to provide a warm start for the column generation process.
+
+\subsection*{4. Subproblem Modification}
+To ensure that the column generation process at the child nodes only generates valid trees that respect the branching decisions, the Minimum Spanning Tree (MST) subproblem must be modified. Let $E_0$ be the set of edges fixed to 0, and $E_1$ be the set of edges fixed to 1 at the current node.
+\begin{itemize}
+    \item \textbf{Enforcing $x_e = 0$ for $e \in E_0$:} We temporarily remove these edges from the graph $G$, or equivalently, set their modified weight in the subproblem to $\bar{w}_e = \infty$.
+    \item \textbf{Enforcing $x_e = 1$ for $e \in E_1$:} We force these edges into the MST. In Kruskal's algorithm, this is achieved by initializing the forest with the edges in $E_1$ (merging their respective components) before processing the remaining available edges. Alternatively, their weights can be set to $\bar{w}_e = -\infty$.
+\end{itemize}
+
+\noindent By applying these modifications, the MST algorithm will naturally only return new columns (trees) that contain all edges in $E_1$ and no edges in $E_0$. The Branch-and-Price algorithm continues recursively, bounding nodes where the RMP objective exceeds the incumbent, until the optimal integer DCMST is found.
+
+\end{document}
+

@@ -35,6 +35,8 @@ from Gurobi_lazycut      import DCMST_gurobi_lazy
 from Gurobi_integerflow  import DCMST_gurobi_integerflow
 from Gurobi_multiflow    import DCMST_gurobi_multiflow
 from DCMST_BP_parallel_fMIP import parallel_branch_and_price
+from DCMST_BP_root_unparalled import parallel_branch_and_price_root_serial
+from DCMST_BP_serial import branch_and_price_serial
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -44,11 +46,18 @@ MEMORY_LIMIT_GB = 8  # Memory limit in GB
 N_SEEDS     = 10
 SKIP_THRESH = N_SEEDS   # skip larger n once ALL seeds fail (timeout or memory)
 
+Gurobi_lazy= False
+Gurobi_integerflow= False
+Gurobi_multiflow= False
+ParBP= False
+SerialBP= True
+ParBP_root_serial= True
+
 # Global flag for memory monitoring
 memory_exceeded = False
 
 N_VALUES = [20, 50, 80, 100, 150, 200, 300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000]
-D_VALUES = [2, 3, 4, 5]
+D_VALUES = [2, 3, 4]
 
 # TIME_LIMIT  = 10
 # N_SEEDS     = 3
@@ -57,12 +66,14 @@ D_VALUES = [2, 3, 4, 5]
 # N_VALUES = [20, 50,80]
 # D_VALUES = [2, 3,]
 
-METHODS = [
-    ("LazyDFJ", DCMST_gurobi_lazy),
-    ("IntFlow", DCMST_gurobi_integerflow),
-    ("MCF",     DCMST_gurobi_multiflow),
-    ("ParBP",   None),   # handled separately
-]
+# Build active method list from boolean flags
+METHODS = []
+if Gurobi_lazy:        METHODS.append(("LazyDFJ",      DCMST_gurobi_lazy))
+if Gurobi_integerflow: METHODS.append(("IntFlow",       DCMST_gurobi_integerflow))
+if Gurobi_multiflow:   METHODS.append(("MCF",           DCMST_gurobi_multiflow))
+if ParBP:              METHODS.append(("ParBP",         None))   # parallel B&P
+if ParBP_root_serial:  METHODS.append(("ParBP_RootSer", None))   # parallel B&P, serial root
+if SerialBP:           METHODS.append(("SerialBP",      None))   # fully serial B&P
 
 OUTPUT_FILE = "results.csv"
 CSV_COLS    = ["n", "d", "seed", "method", "UB", "LB", "Gap%", "Time(s)", "Status"]
@@ -153,21 +164,29 @@ def run_gurobi_solver(solver_fn, n, edges, W_matrix, degree_limit):
     return ub, lb, elapsed, timed_out, "TL" if timed_out else "OK"
 
 
-def run_bp_solver(n, edges, weights, degree_limit):
+def run_bp_solver(method_name, n, edges, weights, degree_limit):
     global memory_exceeded
     memory_exceeded = False
-    
+
+    # Pick the right solver function
+    if method_name == "ParBP":
+        solver = parallel_branch_and_price
+    elif method_name == "ParBP_RootSer":
+        solver = parallel_branch_and_price_root_serial
+    else:  # SerialBP
+        solver = branch_and_price_serial
+
     # Start memory monitoring thread
     stop_event = threading.Event()
     monitor_thread = threading.Thread(target=monitor_memory, args=(stop_event, MEMORY_LIMIT_GB))
     monitor_thread.daemon = True
     monitor_thread.start()
-    
+
     initial_mem = get_memory_usage_gb()
     print(f"[mem: {initial_mem:.2f}GB]", end=" ", flush=True)
-    
+
     try:
-        _, ub, lb, elapsed = parallel_branch_and_price(
+        _, ub, lb, elapsed = solver(
             n, edges, weights, degree_limit, time_limit=TIME_LIMIT
         )
     except Exception as exc:
@@ -270,9 +289,9 @@ def run_all():
                             continue
 
                         # Solve
-                        if method_name == "ParBP":
+                        if method_name in ("ParBP", "ParBP_RootSer", "SerialBP"):
                             ub, lb, elapsed, timed_out, status = run_bp_solver(
-                                n, edges, weights, degree_limit
+                                method_name, n, edges, weights, degree_limit
                             )
                         else:
                             ub, lb, elapsed, timed_out, status = run_gurobi_solver(

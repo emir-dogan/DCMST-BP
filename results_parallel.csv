@@ -1919,5 +1919,3 @@ n,d,seed,method,UB,LB,Gap%,Time(s),Status
 2000,4,7,ParBP,inf,inf,inf,300.00,SKIP
 2000,4,8,ParBP,inf,inf,inf,300.00,SKIP
 2000,4,9,ParBP,inf,inf,inf,300.00,SKIP
-20,5,0,LazyDFJ,68.0000,68.0000,0.0000,0.11,OK
-20,5,1,LazyDFJ,37.0000,37.0000,0.0000,0.04,OK

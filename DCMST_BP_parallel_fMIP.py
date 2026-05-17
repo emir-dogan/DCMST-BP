@@ -315,7 +315,7 @@ def column_generation(n, edges, weights, degree_limit, E0, E1, init_cols):
         lambda_vals, pi, mu, obj = rmp.optimize()
         if lambda_vals is None: return None, None, None, float('inf')
         new_tree, rc = solve_subproblem(n, edges, weights, pi, mu, E0, E1)
-        if len(columns)%100 == 0:
+        if len(columns)%100 == 0 and False:
             print(f"  CG iteration: obj={obj:.2f}  new_tree_rc={rc:.2f}  columns={len(columns)}")
         if new_tree is None or rc >= -1e-6: break
         key = frozenset(new_tree)

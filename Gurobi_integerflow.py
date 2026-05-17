@@ -6,7 +6,7 @@ import time
 def DCMST_gurobi_integerflow(n, Edges, Weights, Max_degree, time_limit=300):
     """Degree-Constrained Minimum Spanning Tree via Single-Commodity Integer Flow."""
     model = gp.Model("DCMST_IntFlow")
-    model.Params.OutputFlag = 1
+    model.Params.OutputFlag = 0
     model.Params.TimeLimit  = time_limit
 
     # ------------------------------------------------------------------

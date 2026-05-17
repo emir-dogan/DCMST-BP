@@ -17,7 +17,7 @@ Sweep order: method -> d -> n -> seed
   then the next method starts.
 
 Early-stopping rule (per method, per degree):
-  If ALL seeds for a given n time out, skip all larger n for that (method, d).
+  If ALL seeds for a given n fail (timeout or memory limit), skip all larger n for that (method, d).
 
 Output: results.csv  (one row per solve, written immediately after each solve)
 Columns: n, d, seed, method, UB, LB, Gap%, Time(s), Status
@@ -25,6 +25,10 @@ Columns: n, d, seed, method, UB, LB, Gap%, Time(s), Status
 
 import csv
 import time
+import psutil
+import os
+import threading
+import gc
 
 from Instance_generator import generate_instance
 from Gurobi_lazycut      import DCMST_gurobi_lazy
@@ -36,10 +40,14 @@ from DCMST_BP_parallel_fMIP import parallel_branch_and_price
 # Configuration
 # ---------------------------------------------------------------------------
 TIME_LIMIT  = 300
+MEMORY_LIMIT_GB = 8  # Memory limit in GB
 N_SEEDS     = 10
-SKIP_THRESH = N_SEEDS   # skip larger n once ALL seeds time out for a given n
+SKIP_THRESH = N_SEEDS   # skip larger n once ALL seeds fail (timeout or memory)
 
-N_VALUES = [20, 50, 80, 100, 150, 200, 300, 400, 500, 600, 700, 800, 1000, 1200]
+# Global flag for memory monitoring
+memory_exceeded = False
+
+N_VALUES = [20, 50, 80, 100, 150, 200, 300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000]
 D_VALUES = [2, 3, 4, 5]
 
 # TIME_LIMIT  = 10
@@ -76,15 +84,64 @@ def _fmt(v):
     return f"{v:.4f}"
 
 
+def get_memory_usage_gb():
+    """Get current process memory usage in GB."""
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    return mem_info.rss / (1024 ** 3)  # Convert bytes to GB
+
+
+def cleanup_memory():
+    """Force garbage collection and pause to allow memory cleanup."""
+    gc.collect()  # Force garbage collection
+    time.sleep(2)  # Allow OS and Gurobi to reclaim memory
+
+
+def monitor_memory(stop_event, memory_limit_gb):
+    """Monitor memory usage and set flag if limit exceeded."""
+    global memory_exceeded
+    while not stop_event.is_set():
+        current_mem = get_memory_usage_gb()
+        if current_mem > memory_limit_gb:
+            memory_exceeded = True
+            print(f"\n    MEMORY LIMIT EXCEEDED: {current_mem:.2f} GB > {memory_limit_gb} GB")
+            return
+        time.sleep(0.5)  # Check every 0.5 seconds
+
+
 def run_gurobi_solver(solver_fn, n, edges, W_matrix, degree_limit):
+    global memory_exceeded
+    memory_exceeded = False
+    
+    # Start memory monitoring thread
+    stop_event = threading.Event()
+    monitor_thread = threading.Thread(target=monitor_memory, args=(stop_event, MEMORY_LIMIT_GB))
+    monitor_thread.daemon = True
+    monitor_thread.start()
+    
+    initial_mem = get_memory_usage_gb()
+    print(f"[mem: {initial_mem:.2f}GB]", end=" ", flush=True)
+    
     t0 = time.time()
     try:
         result = solver_fn(n, edges, W_matrix, degree_limit, time_limit=TIME_LIMIT)
     except Exception as exc:
         elapsed = time.time() - t0
+        stop_event.set()
+        monitor_thread.join(timeout=1)
         print(f"    ERROR: {exc}")
         return float('inf'), float('-inf'), elapsed, True, f"ERROR"
+    finally:
+        stop_event.set()
+        monitor_thread.join(timeout=1)
+    
     elapsed = time.time() - t0
+    final_mem = get_memory_usage_gb()
+    
+    # Check if memory limit was exceeded
+    if memory_exceeded:
+        return float('inf'), float('-inf'), elapsed, False, "MEM_LIMIT"
+    
     if result is None:
         ub, lb = float('inf'), float('-inf')
     else:
@@ -97,13 +154,37 @@ def run_gurobi_solver(solver_fn, n, edges, W_matrix, degree_limit):
 
 
 def run_bp_solver(n, edges, weights, degree_limit):
+    global memory_exceeded
+    memory_exceeded = False
+    
+    # Start memory monitoring thread
+    stop_event = threading.Event()
+    monitor_thread = threading.Thread(target=monitor_memory, args=(stop_event, MEMORY_LIMIT_GB))
+    monitor_thread.daemon = True
+    monitor_thread.start()
+    
+    initial_mem = get_memory_usage_gb()
+    print(f"[mem: {initial_mem:.2f}GB]", end=" ", flush=True)
+    
     try:
         _, ub, lb, elapsed = parallel_branch_and_price(
             n, edges, weights, degree_limit, time_limit=TIME_LIMIT
         )
     except Exception as exc:
+        stop_event.set()
+        monitor_thread.join(timeout=1)
         print(f"    ERROR: {exc}")
         return float('inf'), float('-inf'), TIME_LIMIT, True, "ERROR"
+    finally:
+        stop_event.set()
+        monitor_thread.join(timeout=1)
+    
+    final_mem = get_memory_usage_gb()
+    
+    # Check if memory limit was exceeded
+    if memory_exceeded:
+        return float('inf'), float('-inf'), elapsed, False, "MEM_LIMIT"
+    
     timed_out = elapsed >= TIME_LIMIT * 0.99
     return ub, lb, elapsed, timed_out, "TL" if timed_out else "OK"
 
@@ -150,22 +231,27 @@ def run_all():
         csvfile.flush()
 
         n_methods = len(METHODS)
-        for m_idx, (method_name, solver_fn) in enumerate(METHODS, 1):
-            print(f"\n{'#'*72}")
-            print(f"# METHOD [{m_idx}/{n_methods}]: {method_name}")
-            print(f"{'#'*72}")
+        
+        for d in D_VALUES:
+            print(f"\n{'='*72}")
+            print(f"# DEGREE = {d}")
+            print(f"{'='*72}")
+            
+            for m_idx, (method_name, solver_fn) in enumerate(METHODS, 1):
+                print(f"\n{'#'*72}")
+                print(f"# METHOD [{m_idx}/{n_methods}]: {method_name} | d={d}")
+                print(f"{'#'*72}")
 
-            # Per-degree early-stop flag and per-(d,n) timeout counter
-            skipped_d       = {d: False for d in D_VALUES}
-            timed_out_count = {d: {n: 0 for n in N_VALUES} for d in D_VALUES}
+                # Per-method early-stop flag and per-n failure counter (timeout or memory)
+                skipped_method = False
+                failed_count = {n: 0 for n in N_VALUES}
 
-            for d in D_VALUES:
                 for n in N_VALUES:
                     for seed in range(N_SEEDS):
-                        print(f"\n  [{method_name}]  n={n}  d={d}  seed={seed}",
+                        print(f"\n  [{method_name}]  d={d}  n={n}  seed={seed}",
                               end="  ", flush=True)
 
-                        if skipped_d[d]:
+                        if skipped_method:
                             print("-> SKIP (early-stop)")
                             _write_row(writer, csvfile, n, d, seed, method_name,
                                        float('inf'), float('-inf'),
@@ -200,15 +286,25 @@ def run_all():
                         _write_row(writer, csvfile, n, d, seed, method_name,
                                    ub, lb, g, elapsed, status)
 
-                        if timed_out:
-                            timed_out_count[d][n] += 1
+                        # Clean up memory after each solve
+                        cleanup_memory()
+
+                        # Count failures (timeout or memory limit)
+                        if status in ("TL", "MEM_LIMIT"):
+                            failed_count[n] += 1
 
                     # After all seeds for this (method, d, n): check early-stop
-                    if not skipped_d[d] and timed_out_count[d][n] >= SKIP_THRESH:
+                    if not skipped_method and failed_count[n] >= SKIP_THRESH:
                         print(f"\n  *** Early-stop: [{method_name}] d={d} — all "
-                              f"{SKIP_THRESH} seeds timed out at n={n}. "
+                              f"{SKIP_THRESH} seeds failed (timeout/memory) at n={n}. "
                               "Skipping larger n. ***")
-                        skipped_d[d] = True
+                        skipped_method = True
+                
+                # Clean up memory after each method completes
+                print(f"\n  Cleaning up memory after {method_name}...")
+                cleanup_memory()
+                current_mem = get_memory_usage_gb()
+                print(f"  Memory after cleanup: {current_mem:.2f} GB")
 
     print(f"\nResults written to  {OUTPUT_FILE}")
 

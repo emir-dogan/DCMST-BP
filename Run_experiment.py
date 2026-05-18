@@ -51,7 +51,7 @@ Gurobi_integerflow= False
 Gurobi_multiflow= False
 ParBP= False
 SerialBP= True
-ParBP_root_serial= True
+ParBP_root_serial= False
 
 # Global flag for memory monitoring
 memory_exceeded = False

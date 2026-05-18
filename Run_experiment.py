@@ -49,15 +49,18 @@ SKIP_THRESH = N_SEEDS   # skip larger n once ALL seeds fail (timeout or memory)
 Gurobi_lazy= False
 Gurobi_integerflow= False
 Gurobi_multiflow= False
-ParBP= False
-SerialBP= True
-ParBP_root_serial= True
+ParBP= True
+SerialBP= False
+ParBP_root_serial= False
 
 # Global flag for memory monitoring
 memory_exceeded = False
 
 N_VALUES = [20, 50, 80, 100, 150, 200, 300, 400, 500, 600, 700, 800, 1000, 1200, 1500, 2000]
-D_VALUES = [2, 3, 4]
+D_VALUES = [5]
+
+N_VALUES = [1200, 1500, 2000]
+D_VALUES = [5]
 
 # TIME_LIMIT  = 10
 # N_SEEDS     = 3

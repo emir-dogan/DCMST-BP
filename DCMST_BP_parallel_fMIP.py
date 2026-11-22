@@ -361,19 +361,18 @@ def parallel_branch_and_price(n, edges, weights, degree_limit, num_workers=None,
     # Initialization using LP-guided greedy heuristic
     LP_heuristic_solution, LP_heuristic_obj = LP_heuristic(n, edges, weights, degree_limit)
     nn_solution, nn_objective = NearestNeighborhood_heuristic(n, edges, weights, degree_limit)
-    degreeTree_solution, degreeTree_obj = Feasible_Degree_Tree_Heuristic(n, edges, weights, degree_limit)
+#    degreeTree_solution, degreeTree_obj = Feasible_Degree_Tree_Heuristic(n, edges, weights, degree_limit)
     if LP_heuristic_solution and LP_heuristic_obj < best_obj:
         best_solution, best_obj = LP_heuristic_solution, LP_heuristic_obj
         print(f"Root LP-Guided Heuristic Incumbent: {best_obj:.2f}")
     if nn_solution and nn_objective < best_obj:
         best_solution, best_obj = nn_solution, nn_objective
         print(f"Root Nearest-Neighbor Heuristic Incumbent: {best_obj:.2f}")
-    if degreeTree_solution and degreeTree_obj < best_obj:
-        best_solution, best_obj = degreeTree_solution, degreeTree_obj
-        print(f"Root Feasible Degree Tree Heuristic Incumbent: {best_obj:.2f}")
-    else:
-        print("Root heuristics failed to find a valid tree. Will rely on MIP feasibility fallback.")
+#    if degreeTree_solution and degreeTree_obj < best_obj:
+#        best_solution, best_obj = degreeTree_solution, degreeTree_obj
+#        print(f"Root Feasible Degree Tree Heuristic Incumbent: {best_obj:.2f}")
     if best_solution is None:
+        print("Root heuristics failed to find a valid tree. Will rely on MIP feasibility fallback.")
         # Greedy failed — try MIP feasibility to guarantee a valid initial tree
         mip_tree = find_feasible_tree_mip(n, edges, weights, degree_limit, set(), set(), time_limit=time_limit)
         if mip_tree is not None:

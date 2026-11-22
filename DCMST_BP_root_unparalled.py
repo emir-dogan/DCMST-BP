@@ -355,6 +355,7 @@ def parallel_branch_and_price_root_serial(n, edges, weights, degree_limit, num_w
         num_workers = max(1, multiprocessing.cpu_count() - 1)
         
     print(f"Starting Parallel B&P with {num_workers} workers...")
+    start_time = time.time()  # Initialize start time
     
     best_solution = None
     best_obj = float('inf')
